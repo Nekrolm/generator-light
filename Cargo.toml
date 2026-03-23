@@ -1,0 +1,19 @@
+[package]
+name = "generator-light"
+version = "0.1.0"
+edition = "2024"
+description = "Light stackless generators based on Futures"
+license = "MIT"
+authors = ["Dmitry Sviridkin @Nekrolm"]
+
+[dependencies]
+
+
+
+[dev-dependencies]
+criterion = "0.8"
+
+
+[[bench]]
+name = "counter"
+harness = false
