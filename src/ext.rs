@@ -1,6 +1,6 @@
 use core::{ops::DerefMut, pin::Pin};
 
-use crate::{Generator, GeneratorState, Yielder, generator, yield_};
+use crate::{Generator, GeneratorState};
 
 pub struct Iter<P>(Pin<P>);
 
@@ -19,11 +19,37 @@ where
 }
 
 pub fn from_iter<Item>(iter: impl IntoIterator<Item = Item>) -> impl Generator<Yield = Item> {
-    generator(async move |mut yielder: Yielder<_, _>, _| {
-        for x in iter {
-            yield_!(yielder, x)
+    struct GenIter<I: Iterator>(I);
+    impl<I: Iterator> Generator for GenIter<I> {
+        type Return = ();
+        type Yield = I::Item;
+        fn resume(self: Pin<&mut Self>, _value: ()) -> GeneratorState<Self::Yield, Self::Return> {
+            // SAFETY: We are not moving out of the pinned field.
+            match unsafe { self.get_unchecked_mut() }.0.next() {
+                Some(val) => GeneratorState::Yield(val),
+                None => GeneratorState::Complete(()),
+            }
         }
-    })
+    }
+    GenIter(iter.into_iter())
+}
+
+pub const fn from_fn<Resume, Yield, Return>(
+    f: impl FnMut(Resume) -> GeneratorState<Yield, Return>,
+) -> impl Generator<Resume, Yield = Yield, Return = Return> {
+    struct GenFn<F>(F);
+    impl<F, R, Y, Out> Generator<R> for GenFn<F>
+    where
+        F: FnMut(R) -> GeneratorState<Y, Out>,
+    {
+        type Return = Out;
+        type Yield = Y;
+        fn resume(self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
+            // SAFETY: We are not moving out of the pinned field.
+            unsafe { self.get_unchecked_mut() }.0(value)
+        }
+    }
+    GenFn(f)
 }
 
 pub trait GeneratorIterator {

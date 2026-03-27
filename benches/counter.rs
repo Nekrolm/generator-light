@@ -8,7 +8,10 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use generator_light::Generator;
 use generator_light::GeneratorState;
 use generator_light::Yielder;
+use generator_light::ext::GeneratorExt;
 use generator_light::ext::GeneratorIterator;
+use generator_light::ext::from_fn;
+use generator_light::ext::from_iter;
 use generator_light::generator;
 use generator_light::yield_;
 
@@ -16,6 +19,7 @@ fn std_iter_func(n: usize) -> impl IntoIterator<Item = usize> {
     let mut idx = 1;
     std::iter::from_fn(move || {
         let cur = black_box(idx);
+        // let cur = idx;
         let ret = (cur <= n).then_some(cur * cur);
         idx += 1;
         ret
@@ -29,6 +33,17 @@ fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
             yield_!(yilder, idx * idx)
         }
     })
+}
+
+fn squares_compose(n: usize) -> impl Generator<Yield = usize, Return = ()> {
+    from_iter(1..)
+        .compose(from_fn(move |x: usize| {
+            let x = black_box(x);
+            (x <= n)
+                .then_some(GeneratorState::Yield(x * x))
+                .unwrap_or(GeneratorState::Complete(()))
+        }))
+        .map_complete(drop)
 }
 
 fn squares_manual_gen(n: usize) -> impl Generator<Yield = usize, Return = ()> {
@@ -45,6 +60,7 @@ fn squares_manual_gen(n: usize) -> impl Generator<Yield = usize, Return = ()> {
             _value: (),
         ) -> GeneratorState<Self::Yield, Self::Return> {
             let cur = black_box(self.idx);
+            // let cur = self.idx;
             self.idx += 1;
             if cur <= self.limit {
                 GeneratorState::Yield(cur * cur)
@@ -78,6 +94,13 @@ fn bench_generators(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("squares_gen", n), &n, |b, &n| {
             b.iter(|| {
                 let g = pin!(squares(n));
+                consume_iter(g.into_iter());
+            })
+        });
+
+        group.bench_with_input(BenchmarkId::new("squares_compose", n), &n, |b, &n| {
+            b.iter(|| {
+                let g = pin!(squares_compose(n));
                 consume_iter(g.into_iter());
             })
         });
