@@ -1,17 +1,17 @@
-use core::{ops::DerefMut, pin::Pin};
+use core::pin::Pin;
 
 use crate::{Generator, GeneratorState};
 
-pub struct Iter<P>(Pin<P>);
+pub struct Iter<G>(G);
 
-impl<P> Iterator for Iter<P>
+impl<G> Iterator for Iter<G>
 where
-    P: DerefMut<Target: Generator<(), Return = ()>>,
+    G: Generator<(), Return = ()> + Unpin,
 {
-    type Item = <P::Target as Generator<()>>::Yield;
+    type Item = G::Yield;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let GeneratorState::Yield(val) = self.0.as_mut().resume(()) else {
+        let GeneratorState::Yield(val) = Pin::new(&mut self.0).resume(()) else {
             return None;
         };
         Some(val)
@@ -58,12 +58,12 @@ pub trait GeneratorIterator {
     fn into_iter(self) -> Self::Iter;
 }
 
-impl<P> GeneratorIterator for Pin<P>
+impl<G> GeneratorIterator for G
 where
-    P: DerefMut<Target: Generator<(), Return = ()>>,
+    G: Generator<(), Return = ()> + Unpin,
 {
-    type Item = <P::Target as Generator<()>>::Yield;
-    type Iter = Iter<P>;
+    type Item = G::Yield;
+    type Iter = Iter<G>;
     fn into_iter(self) -> Self::Iter {
         Iter(self)
     }

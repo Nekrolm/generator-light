@@ -1,4 +1,11 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+mod core {
+    #[cfg(not(feature = "std"))]
+    pub use core::*;
+    #[cfg(feature = "std")]
+    pub use std::*;
+}
 
 mod fut_generator;
 
@@ -21,6 +28,18 @@ pub trait Generator<R = ()> {
 }
 
 impl<R, G> Generator<R> for &mut G
+where
+    G: Generator<R> + ?Sized + Unpin,
+{
+    type Return = G::Return;
+    type Yield = G::Yield;
+    fn resume(mut self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
+        G::resume(Pin::new(&mut **self), value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl<R, G> Generator<R> for core::boxed::Box<G>
 where
     G: Generator<R> + ?Sized + Unpin,
 {
@@ -61,7 +80,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use core::pin::pin;
+    use crate::core::pin::pin;
 
     use crate::{ext::GeneratorIterator, *};
 

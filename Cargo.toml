@@ -6,9 +6,10 @@ description = "Light stackless generators based on Futures"
 license = "MIT"
 authors = ["Dmitry Sviridkin @Nekrolm"]
 repository = "https://github.com/Nekrolm/generator-light"
+categories = ["no-std"]
+keywords = ["no-std", "generator"]
 
 [dependencies]
-
 
 
 [dev-dependencies]
@@ -18,3 +19,7 @@ criterion = "0.8"
 [[bench]]
 name = "counter"
 harness = false
+
+[features]
+default = ["std"]
+std = []
