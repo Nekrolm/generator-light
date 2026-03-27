@@ -10,7 +10,7 @@ categories = ["no-std"]
 keywords = ["no-std", "generator"]
 
 [dependencies]
-
+either = { version = "1", default-features = false}
 
 [dev-dependencies]
 criterion = "0.8"

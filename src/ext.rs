@@ -69,11 +69,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Either<L, R> {
-    Left(L),
-    Right(R),
-}
+pub use either::Either;
 
 pub trait GeneratorExt<R>: Generator<R> {
     fn compose<G: Generator<Self::Yield>>(self, then: G) -> Compose<Self, G>
