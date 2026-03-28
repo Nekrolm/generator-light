@@ -31,10 +31,9 @@ impl<Y, R> GeneratorContext<Y, R> {
         self.0.set(YieldState::Resume(value));
     }
 
-    pub(crate) fn take_yielded(&self) -> Y {
-        let YieldState::Yield(Some(val)) = self.0.replace(YieldState::Yield(None)) else {
-            // unsafe { unreachable_unchecked() }
-            unreachable!("This should never happen if generator is built correctly");
+    pub(crate) fn take_yielded(&self) -> Option<Y> {
+        let YieldState::Yield(val) = self.0.replace(YieldState::Yield(None)) else {
+            unsafe { crate::core::hint::unreachable_unchecked() };
         };
         val
     }
@@ -94,11 +93,25 @@ impl<Y, R> Yielder<'_, Y, R> {
             _yileder: Yielder::<'a, Y, R>::new(),
         }
     }
+
+    pub const fn suspend<'a>(&'a mut self) -> impl Future<Output = R> {
+        YieldFuture {
+            state: None,
+            _yileder: Yielder::<'a, Y, R>::new(),
+        }
+    }
 }
 
 #[macro_export]
 macro_rules! yield_ {
     ($yielder:ident, $value:expr) => {
         $yielder.yield_value($value).await
+    };
+}
+
+#[macro_export]
+macro_rules! suspend_ {
+    ($yielder:ident) => {
+        $yielder.suspend($value).await
     };
 }

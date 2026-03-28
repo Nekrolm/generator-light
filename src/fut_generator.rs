@@ -47,7 +47,9 @@ where
                 let pinned = unsafe { Pin::new_unchecked(f) };
                 return match pinned.poll(&mut poll_context) {
                     Poll::Ready(out) => GeneratorState::Complete(out),
-                    Poll::Pending => GeneratorState::Yield(state.take_yielded()),
+                    Poll::Pending => state
+                        .take_yielded()
+                        .map_or(GeneratorState::Suspend, GeneratorState::Yield),
                 };
             }
         };
@@ -57,7 +59,9 @@ where
         state.resume(val);
         match pinned.poll(&mut poll_context) {
             Poll::Ready(out) => GeneratorState::Complete(out),
-            Poll::Pending => GeneratorState::Yield(state.take_yielded()),
+            Poll::Pending => state
+                .take_yielded()
+                .map_or(GeneratorState::Suspend, GeneratorState::Yield),
         }
     }
 

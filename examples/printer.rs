@@ -1,12 +1,14 @@
 #![allow(unused)]
 
 use std::fmt::Display;
+use std::iter::repeat_n;
 use std::pin::pin;
 
 use generator_light::Generator;
 use generator_light::GeneratorState;
 use generator_light::Yielder;
 use generator_light::ext::GeneratorIterator;
+use generator_light::ext::complete_with;
 use generator_light::ext::from_fn;
 use generator_light::ext::from_iter;
 use generator_light::ext::once;
@@ -39,13 +41,27 @@ fn print_list(s: impl IntoIterator<Item: Display>, sep: impl Display) {
 fn show_triangle(h: usize) -> impl Generator<Yield = char, Return = ()> {
     from_iter(1..=h)
         .map_yield(|w| {
-            from_iter(1..=w)
-                .map_yield(|_| '*')
-                .chain_with(|_| (once('\n'), ()))
+            from_iter(repeat_n('*', w))
+                .map_complete(|_| '\n')
+                .and_then(once)
         })
-        .join_with(|| (), |_| ())
+        .flatten()
+}
+
+// fn main() {
+//     show_triangle(10).into_iter().for_each(|c| print!("{c}"));
+// }
+
+fn adjacent_difference() -> impl Generator<i32, Yield = i32, Return = Infallible> {
+    complete_with(|x| x).and_then(|mut init| {
+        from_fn(GeneratorState::Yield).receiving(move |x| x - std::mem::replace(&mut init, x))
+    })
 }
 
 fn main() {
-    show_triangle(10).into_iter().for_each(|c| print!("{c}"));
+    from_iter((1..15).map(|x| x * x))
+        .compose(adjacent_difference())
+        .map_complete(drop)
+        .into_iter()
+        .for_each(|c| print!("{c}\n"));
 }

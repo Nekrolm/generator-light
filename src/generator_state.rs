@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub enum GeneratorState<Y, R> {
+    Suspend,
     Yield(Y),
     Complete(R),
 }
@@ -7,6 +8,7 @@ pub enum GeneratorState<Y, R> {
 impl<Y, R> GeneratorState<Y, R> {
     pub fn map_yield<U>(self, f: impl FnOnce(Y) -> U) -> GeneratorState<U, R> {
         match self {
+            GeneratorState::Suspend => GeneratorState::Suspend,
             GeneratorState::Yield(y) => GeneratorState::Yield(f(y)),
             GeneratorState::Complete(r) => GeneratorState::Complete(r),
         }
@@ -14,6 +16,7 @@ impl<Y, R> GeneratorState<Y, R> {
 
     pub fn map_complete<U>(self, f: impl FnOnce(R) -> U) -> GeneratorState<Y, U> {
         match self {
+            GeneratorState::Suspend => GeneratorState::Suspend,
             GeneratorState::Yield(y) => GeneratorState::Yield(y),
             GeneratorState::Complete(r) => GeneratorState::Complete(f(r)),
         }

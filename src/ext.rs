@@ -1,3 +1,7 @@
+use std::marker::PhantomData;
+
+use crate::core::convert::Infallible;
+
 use crate::core::pin::Pin;
 
 use crate::{Generator, GeneratorState};
@@ -11,10 +15,13 @@ where
     type Item = G::Yield;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let GeneratorState::Yield(val) = Pin::new(&mut self.0).resume(()) else {
-            return None;
-        };
-        Some(val)
+        loop {
+            match Pin::new(&mut self.0).resume(()) {
+                GeneratorState::Complete(_) => return None,
+                GeneratorState::Suspend => continue,
+                GeneratorState::Yield(val) => return Some(val),
+            }
+        }
     }
 }
 
@@ -111,11 +118,11 @@ pub trait GeneratorExt<R>: Generator<R> {
         MapYield { generator: self, f }
     }
 
-    fn chain_with<G, F>(self, f: F) -> AndThen<Self, F, G>
+    fn and_then<G, F>(self, f: F) -> AndThen<Self, F, G>
     where
         Self: Sized,
         G: Generator<R, Yield = Self::Yield>,
-        F: FnOnce(Self::Return) -> (G, R),
+        F: FnOnce(Self::Return) -> G,
     {
         AndThen::Before {
             g: self,
@@ -123,19 +130,14 @@ pub trait GeneratorExt<R>: Generator<R> {
         }
     }
 
-    fn join_with<C, F, I>(self, continue_inner: I, continue_outer: F) -> Flatten<Self, C, I, F>
+    fn flatten(self) -> Flatten<Self, Self::Yield>
     where
         Self: Sized,
-        Self: Generator<R, Yield = C>,
-        C: Generator<R>,
-        I: FnMut() -> R,
-        F: FnMut(C::Return) -> R,
+        Self::Yield: Generator<R, Return = ()>,
     {
         Flatten {
             g: self,
             current: None,
-            continue_outer,
-            continue_inner,
         }
     }
 }
@@ -158,6 +160,7 @@ where
     fn resume(mut self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         let first = unsafe { self.as_mut().map_unchecked_mut(|this| &mut this.first) };
         let value = match first.resume(value) {
+            GeneratorState::Suspend => return GeneratorState::Suspend,
             GeneratorState::Complete(x) => return GeneratorState::Complete(Either::Left(x)),
             GeneratorState::Yield(value) => value,
         };
@@ -215,67 +218,64 @@ pub enum AndThen<G1, F, G2> {
 impl<G1, F, G2, R> Generator<R> for AndThen<G1, F, G2>
 where
     G1: Generator<R>,
-    F: FnOnce(G1::Return) -> (G2, R),
+    F: FnOnce(G1::Return) -> G2,
     G2: Generator<R, Yield = G1::Yield>,
 {
     type Yield = G1::Yield;
     type Return = G2::Return;
 
-    fn resume(mut self: Pin<&mut Self>, mut value: R) -> GeneratorState<Self::Yield, Self::Return> {
+    fn resume(mut self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         let this = unsafe { self.as_mut().get_unchecked_mut() };
-        loop {
-            match this {
-                AndThen::Before { g, f } => match unsafe { Pin::new_unchecked(g) }.resume(value) {
-                    GeneratorState::Complete(r) => {
-                        let f = f.take().unwrap();
-                        let (g2, y) = f(r);
-                        *this = AndThen::After { g: g2 };
-                        value = y;
-                    }
-                    GeneratorState::Yield(y) => return GeneratorState::Yield(y),
-                },
-                AndThen::After { g } => return unsafe { Pin::new_unchecked(g) }.resume(value),
-            }
+
+        match this {
+            AndThen::Before { g, f } => match unsafe { Pin::new_unchecked(g) }.resume(value) {
+                GeneratorState::Complete(r) => {
+                    let f = f.take().unwrap();
+                    let g = f(r);
+                    *this = AndThen::After { g };
+                    GeneratorState::Suspend
+                }
+                GeneratorState::Yield(y) => GeneratorState::Yield(y),
+                GeneratorState::Suspend => GeneratorState::Suspend,
+            },
+            AndThen::After { g } => unsafe { Pin::new_unchecked(g) }.resume(value),
         }
     }
 }
 
-pub struct Flatten<G, C, I, F> {
+pub struct Flatten<G, C> {
     g: G,
     current: Option<C>,
-    continue_inner: I,
-    continue_outer: F,
 }
 
-impl<R, G, C, F, I> Generator<R> for Flatten<G, C, I, F>
+impl<R, G, C> Generator<R> for Flatten<G, C>
 where
     G: Generator<R, Yield = C>,
-    C: Generator<R>,
-    F: FnMut(C::Return) -> R,
-    I: FnMut() -> R,
+    C: Generator<R, Return = ()>,
 {
     type Yield = C::Yield;
     type Return = G::Return;
 
-    fn resume(self: Pin<&mut Self>, mut value: R) -> GeneratorState<Self::Yield, Self::Return> {
+    fn resume(self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         let this = unsafe { self.get_unchecked_mut() };
-        loop {
-            if let Some(current) = &mut this.current {
-                match unsafe { Pin::new_unchecked(current) }.resume(value) {
-                    GeneratorState::Complete(seed) => {
-                        value = (this.continue_outer)(seed);
-                        this.current = None;
-                    }
-                    GeneratorState::Yield(y) => return GeneratorState::Yield(y),
+
+        if let Some(current) = &mut this.current {
+            match unsafe { Pin::new_unchecked(current) }.resume(value) {
+                GeneratorState::Suspend => GeneratorState::Suspend,
+                GeneratorState::Complete(()) => {
+                    this.current = None;
+                    GeneratorState::Suspend
                 }
-            } else {
-                match unsafe { Pin::new_unchecked(&mut this.g) }.resume(value) {
-                    GeneratorState::Complete(r) => return GeneratorState::Complete(r),
-                    GeneratorState::Yield(c) => {
-                        this.current = Some(c);
-                        value = (this.continue_inner)()
-                    }
+                GeneratorState::Yield(y) => GeneratorState::Yield(y),
+            }
+        } else {
+            match unsafe { Pin::new_unchecked(&mut this.g) }.resume(value) {
+                GeneratorState::Complete(r) => GeneratorState::Complete(r),
+                GeneratorState::Yield(c) => {
+                    this.current = Some(c);
+                    GeneratorState::Suspend
                 }
+                GeneratorState::Suspend => GeneratorState::Suspend,
             }
         }
     }
@@ -283,6 +283,8 @@ where
 
 pub struct Once<Y>(Option<Y>);
 pub struct OnceWith<F>(Option<F>);
+
+pub struct CompleteWith<F, Y>(Option<F>, PhantomData<Y>);
 
 impl<Y> Generator for Once<Y> {
     type Return = ();
@@ -313,14 +315,38 @@ where
     }
 }
 
-pub fn once<Y>(yielded: Y) -> impl Generator<Yield = Y, Return = ()> {
+impl<F, R, C, Y> Generator<R> for CompleteWith<F, Y>
+where
+    F: FnOnce(R) -> C,
+{
+    type Return = C;
+    type Yield = Y;
+    fn resume(self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let f = this.0.take().unwrap();
+        GeneratorState::Complete(f(value))
+    }
+}
+
+pub const fn identity<Y>() -> impl Generator<Y, Yield = Y, Return = Infallible> {
+    from_fn(GeneratorState::Yield)
+}
+
+pub const fn once<Y>(yielded: Y) -> impl Generator<Yield = Y, Return = ()> {
     Once(Some(yielded))
 }
-pub fn once_with<F, R, Y>(f: F) -> impl Generator<R, Yield = Y, Return = ()>
+pub const fn once_with<F, R, Y>(f: F) -> impl Generator<R, Yield = Y, Return = ()>
 where
     F: FnOnce(R) -> Y,
 {
     OnceWith(Some(f))
+}
+
+pub const fn complete_with<F, Y, R, C>(f: F) -> impl Generator<R, Yield = Y, Return = C>
+where
+    F: FnOnce(R) -> C,
+{
+    CompleteWith(Some(f), PhantomData)
 }
 
 pub struct Receiving<G, F> {
