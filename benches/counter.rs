@@ -13,7 +13,6 @@ use generator_light::ext::GeneratorIterator;
 use generator_light::ext::from_fn;
 use generator_light::ext::from_iter;
 use generator_light::generator;
-use generator_light::yield_;
 
 fn std_iter_func(n: usize) -> impl IntoIterator<Item = usize> {
     let mut idx = 1;
@@ -30,9 +29,21 @@ fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
     generator(async move |mut yilder: Yielder<_, _>, _| {
         for idx in 1..=n {
             let idx = black_box(idx);
-            yield_!(yilder, idx * idx)
+            generator_light::yield_!(yilder, idx * idx)
         }
     })
+}
+
+fn squares_genawaiter(n: usize) {
+    use genawaiter::yield_;
+    genawaiter::stack::let_gen!(squares, 
+    {
+        for idx in 1..=n {
+            let idx = black_box(idx);
+            yield_!(idx * idx);
+        }
+    });
+    consume_iter(squares.into_iter());
 }
 
 fn squares_compose(n: usize) -> impl Generator<Yield = usize, Return = ()> {
@@ -95,6 +106,12 @@ fn bench_generators(c: &mut Criterion) {
             b.iter(|| {
                 let g = pin!(squares(n));
                 consume_iter(g.into_iter());
+            })
+        });
+
+        group.bench_with_input(BenchmarkId::new("squares_genawaiter", n), &n, |b, &n| {
+            b.iter(|| {
+                squares_genawaiter(n);
             })
         });
 

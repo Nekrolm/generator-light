@@ -14,6 +14,7 @@ either = { version = "1", default-features = false}
 
 [dev-dependencies]
 criterion = "0.8"
+genawaiter = "0.99"
 
 
 [[bench]]
