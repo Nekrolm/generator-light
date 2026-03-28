@@ -1,9 +1,14 @@
-use std::marker::PhantomData;
+use crate::core::hint::unreachable_unchecked;
+
+use crate::core::ptr::NonNull;
+
+use crate::core::marker::{PhantomData, PhantomPinned};
 
 use crate::core::convert::Infallible;
 
 use crate::core::pin::Pin;
 
+use crate::fn_trait::FnOnceOutputOne;
 use crate::{Generator, GeneratorState};
 
 pub struct Iter<G>(G);
@@ -366,5 +371,60 @@ where
         let this = unsafe { self.get_unchecked_mut() };
         let r2 = (this.f)(value);
         unsafe { Pin::new_unchecked(&mut this.g) }.resume(r2)
+    }
+}
+
+enum Gen<F, G> {
+    Init(Option<F>),
+    Gen(G),
+}
+
+struct ContextGen<C, R, F>
+where
+    F: FnOnceOutputOne<NonNull<C>, Out: Generator<R>>,
+{
+    context: Option<C>,
+    g: Gen<F, <F as FnOnceOutputOne<NonNull<C>>>::Out>,
+    _pinned: PhantomPinned,
+    _resume: PhantomData<R>,
+}
+
+impl<C, R, F> Generator<R> for ContextGen<C, R, F>
+where
+    F: FnOnceOutputOne<NonNull<C>, Out: Generator<R, Return = ()>>,
+{
+    type Return = C;
+    type Yield = <<F as FnOnceOutputOne<NonNull<C>>>::Out as Generator<R>>::Yield;
+
+    fn resume(self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
+        let this = unsafe { self.get_unchecked_mut() };
+        if let Gen::Init(f) = &mut this.g {
+            let g = f
+                .take()
+                .unwrap()
+                .call(NonNull::from_mut(this.context.as_mut().unwrap()));
+            this.g = Gen::Gen(g);
+        };
+        let Gen::Gen(g) = &mut this.g else {
+            unsafe { unreachable_unchecked() };
+        };
+        unsafe { Pin::new_unchecked(g) }
+            .resume(value)
+            .map_complete(|_| this.context.take().unwrap())
+    }
+}
+
+// Capture context C to the contextless function f
+pub const fn context<C, R, Yield>(
+    c: C,
+    f: impl for<'a> FnOnceOutputOne<&'a mut C, Out: Generator<R, Yield = Yield, Return = ()>>,
+) -> impl Generator<R, Yield = Yield, Return = C> {
+    ContextGen::<C, R, _> {
+        context: Some(c),
+        g: Gen::Init(Some(move |ptr: NonNull<C>| unsafe {
+            f.call(&mut *ptr.as_ptr())
+        })),
+        _pinned: PhantomPinned,
+        _resume: PhantomData,
     }
 }

@@ -77,6 +77,8 @@ where
     fut_generator::Generator::new(f)
 }
 
+pub use fut_generator::drain_future;
+
 #[cfg(test)]
 mod tests {
 

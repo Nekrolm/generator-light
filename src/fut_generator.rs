@@ -16,7 +16,9 @@ pub(crate) struct Generator<F, Y, R>
 where
     F: for<'a> FnOnceOutput<Yielder<'a, Y, R>, R, Out: Future>,
 {
+    // state: GeneratorContext<Y, R>,
     generator: Gen<F, <F as FnOnceOutput<Yielder<'static, Y, R>, R>>::Out>,
+    // _pinned: PhantomPinned
 }
 
 impl<F, Y, R, Output> Generator<F, Y, R>
@@ -67,7 +69,7 @@ where
 
     pub(crate) const fn new(f: F) -> Self {
         Self {
-            // ctx: GeneratorContext::new(),
+            // state: GeneratorContext::new(),
             generator: Gen::Init(Some(f)),
             // _pinned: PhantomPinned,
         }
@@ -83,5 +85,23 @@ where
 
     fn resume(self: Pin<&mut Self>, resume_val: R) -> GeneratorState<Self::Yield, Self::Return> {
         self.resume_impl(resume_val)
+    }
+}
+
+pub fn drain_future<Y>(f: impl AsyncFnOnce(Yielder<Y, ()>, ()), mut on_item: impl FnMut(Y)) {
+    let state = GeneratorContext::<Y, ()>::new();
+    let waker = unsafe { make_yielder_waker(&state) };
+    let mut poll_context = Context::from_waker(&waker);
+    let mut f = crate::core::pin::pin!(f(Yielder::new(), ()));
+    loop {
+        match f.as_mut().poll(&mut poll_context) {
+            Poll::Pending => {
+                state.take_yielded().map(&mut on_item);
+            }
+            Poll::Ready(_) => {
+                break;
+            }
+        }
+        state.resume(());
     }
 }

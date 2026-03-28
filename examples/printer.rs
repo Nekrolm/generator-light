@@ -2,6 +2,7 @@
 
 use std::fmt::Display;
 use std::iter::repeat_n;
+use std::marker::PhantomPinned;
 use std::pin::pin;
 
 use generator_light::Generator;
@@ -9,6 +10,7 @@ use generator_light::GeneratorState;
 use generator_light::Yielder;
 use generator_light::ext::GeneratorIterator;
 use generator_light::ext::complete_with;
+use generator_light::ext::context;
 use generator_light::ext::from_fn;
 use generator_light::ext::from_iter;
 use generator_light::ext::once;
@@ -64,4 +66,32 @@ fn main() {
         .map_complete(drop)
         .into_iter()
         .for_each(|c| print!("{c}\n"));
+
+    let popper = pin!(test_context_gen("hello".into()));
+    popper.into_iter().for_each(|c| print!("{c}\n"));
+}
+
+fn test_context_gen(s: String) -> impl Generator<Yield = char, Return = ()> {
+    fn str_pop(s: &mut String) -> impl Generator<Yield = char, Return = ()> {
+        from_fn(|_| {
+            s.pop()
+                .map_or(GeneratorState::Complete(()), GeneratorState::Yield)
+        })
+    }
+    context(s, str_pop).map_complete(drop)
+}
+
+fn adjacent_difference1() -> impl Generator<i32, Yield = i32, Return = Infallible> {
+    complete_with(|x| x).and_then(|init| {
+        fn diff(prev: &mut i32) -> impl Generator<i32, Yield = i32, Return = ()> {
+            from_fn(GeneratorState::Yield).receiving(|x| x - std::mem::replace(prev, x))
+        }
+        context(init, diff).map_complete(|_| loop {})
+    })
+}
+
+fn landing(s: Vec<u8>) {
+    fn byte_iter<'a>(s: &'a mut Vec<u8>) -> impl Generator<(), Yield = &'a mut u8, Return = ()> {
+        from_iter(s.iter_mut())
+    }
 }
