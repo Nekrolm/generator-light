@@ -1,6 +1,6 @@
 [package]
 name = "generator-light"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Light stackless generators based on Futures"
 license = "MIT"
@@ -25,5 +25,5 @@ harness = false
 default = ["std"]
 std = []
 
-[profile.bench]
-debug = true
+# [profile.bench]
+# debug = true

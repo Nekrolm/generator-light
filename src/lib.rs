@@ -33,6 +33,8 @@ where
 {
     type Return = G::Return;
     type Yield = G::Yield;
+
+    // #[inline]
     fn resume(mut self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         G::resume(Pin::new(&mut **self), value)
     }
@@ -45,6 +47,8 @@ where
 {
     type Return = G::Return;
     type Yield = G::Yield;
+
+    // #[inline]
     fn resume(mut self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         G::resume(Pin::new(&mut **self), value)
     }
@@ -62,22 +66,18 @@ where
     }
 }
 
-/// To build generator, pass an async function with two parameters:
+/// To build generator, pass an async function with a parameter:
 /// First parameter is Yielder -- context handle to yield generated item
-/// The second parameter -- it's a Resume value passed
-///     to the Generator::resume() method at the first time
-pub const fn generator<F, Resume, Yield, Return>(
+pub fn generator<F, Resume, Yield, Return>(
     f: F,
 ) -> impl Generator<Resume, Yield = Yield, Return = Return>
 where
     // F: AsyncFnOnce(Yielder<Yield, Resume>, Resume) -> Return,
     // but this has to be expressed in such ugly form
-    for<'a> F: FnOnceOutput<Yielder<'a, Yield, Resume>, Resume, Out: Future<Output = Return>>,
+    for<'a> F: FnOnceOutput<Yielder<'a, Yield, Resume>, Out: Future<Output = Return>>,
 {
-    fut_generator::Generator::new(f)
+    fut_generator::fut_generator(f)
 }
-
-pub use fut_generator::drain_future;
 
 #[cfg(test)]
 mod tests {
@@ -87,7 +87,7 @@ mod tests {
     use crate::{ext::GeneratorIterator, *};
 
     fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
-        generator(async move |mut this: Yielder<_, _>, _| {
+        generator(async move |mut this: Yielder<_, _>| {
             for x in 1..=n {
                 yield_!(this, x * x);
             }
@@ -95,7 +95,7 @@ mod tests {
     }
 
     fn tok_generator<'a>(s: &'a str) -> impl Generator<Yield = &'a str, Return = ()> {
-        generator(async move |mut this: Yielder<_, _>, _| {
+        generator(async move |mut this: Yielder<_, _>| {
             for tok in s.split_whitespace() {
                 yield_!(this, tok);
             }

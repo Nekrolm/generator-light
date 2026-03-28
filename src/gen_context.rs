@@ -23,16 +23,12 @@ pub struct Yielder<'a, Y, R> {
 }
 
 impl<Y, R> GeneratorContext<Y, R> {
-    pub(crate) const fn new() -> Self {
-        Self(Cell::new(YieldState::Yield(None)))
+    pub(crate) const fn new_resumed(value: R) -> Self {
+        Self(Cell::new(YieldState::Resume(value)))
     }
 
-    pub(crate) fn resume(&self, value: R) {
-        self.0.set(YieldState::Resume(value));
-    }
-
-    pub(crate) fn take_yielded(&self) -> Option<Y> {
-        let YieldState::Yield(val) = self.0.replace(YieldState::Yield(None)) else {
+    pub(crate) fn take_yielded(self) -> Option<Y> {
+        let YieldState::Yield(val) = self.0.into_inner() else {
             unsafe { crate::core::hint::unreachable_unchecked() };
         };
         val
@@ -112,6 +108,6 @@ macro_rules! yield_ {
 #[macro_export]
 macro_rules! suspend_ {
     ($yielder:ident) => {
-        $yielder.suspend($value).await
+        $yielder.suspend().await
     };
 }

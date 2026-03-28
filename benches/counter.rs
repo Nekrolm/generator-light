@@ -26,7 +26,7 @@ fn std_iter_func(n: usize) -> impl IntoIterator<Item = usize> {
 }
 
 fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
-    generator(async move |mut yilder: Yielder<_, _>, _| {
+    generator(async move |mut yilder: Yielder<_, _>| {
         for idx in 1..=n {
             let idx = black_box(idx);
             generator_light::yield_!(yilder, idx * idx)
@@ -36,8 +36,7 @@ fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
 
 fn squares_genawaiter(n: usize) {
     use genawaiter::yield_;
-    genawaiter::stack::let_gen!(squares, 
-    {
+    genawaiter::stack::let_gen!(squares, {
         for idx in 1..=n {
             let idx = black_box(idx);
             yield_!(idx * idx);
@@ -55,33 +54,6 @@ fn squares_compose(n: usize) -> impl Generator<Yield = usize, Return = ()> {
                 .unwrap_or(GeneratorState::Complete(()))
         }))
         .map_complete(drop)
-}
-
-fn squares_manual_gen(n: usize) -> impl Generator<Yield = usize, Return = ()> {
-    struct Gen {
-        idx: usize,
-        limit: usize,
-    }
-
-    impl Generator for Gen {
-        type Return = ();
-        type Yield = usize;
-        fn resume(
-            mut self: std::pin::Pin<&mut Self>,
-            _value: (),
-        ) -> GeneratorState<Self::Yield, Self::Return> {
-            let cur = black_box(self.idx);
-            // let cur = self.idx;
-            self.idx += 1;
-            if cur <= self.limit {
-                GeneratorState::Yield(cur * cur)
-            } else {
-                GeneratorState::Complete(())
-            }
-        }
-    }
-
-    Gen { idx: 1, limit: n }
 }
 
 fn consume_iter<I: Iterator<Item = usize>>(iter: I) {
@@ -118,13 +90,6 @@ fn bench_generators(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("squares_compose", n), &n, |b, &n| {
             b.iter(|| {
                 let g = pin!(squares_compose(n));
-                consume_iter(g.into_iter());
-            })
-        });
-
-        group.bench_with_input(BenchmarkId::new("manual_gen", n), &n, |b, &n| {
-            b.iter(|| {
-                let g = pin!(squares_manual_gen(n));
                 consume_iter(g.into_iter());
             })
         });
