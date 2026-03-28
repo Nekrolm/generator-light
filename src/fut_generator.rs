@@ -1,6 +1,6 @@
-use core::hint::unreachable_unchecked;
-use core::pin::Pin;
-use core::task::{Context, Poll};
+use crate::core::hint::unreachable_unchecked;
+use crate::core::pin::Pin;
+use crate::core::task::{Context, Poll};
 
 use crate::GeneratorState;
 use crate::{Yielder, fn_trait::FnOnceOutput};

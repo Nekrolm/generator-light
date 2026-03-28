@@ -1,10 +1,16 @@
+#![allow(unused)]
+
 use std::fmt::Display;
 use std::pin::pin;
 
 use generator_light::Generator;
+use generator_light::GeneratorState;
 use generator_light::Yielder;
 use generator_light::ext::GeneratorIterator;
+use generator_light::ext::from_fn;
 use generator_light::ext::from_iter;
+use generator_light::ext::once;
+use generator_light::ext::once_with;
 use generator_light::generator;
 use generator_light::yield_;
 
@@ -30,7 +36,16 @@ fn print_list(s: impl IntoIterator<Item: Display>, sep: impl Display) {
     g.into_iter().for_each(drop);
 }
 
+fn show_triangle(h: usize) -> impl Generator<Yield = char, Return = ()> {
+    from_iter(1..=h)
+        .map_yield(|w| {
+            from_iter(1..=w)
+                .map_yield(|_| '*')
+                .chain_with(|_| (once('\n'), ()))
+        })
+        .join_with(|| (), |_| ())
+}
+
 fn main() {
-    print_list([1, 2, 3, 4, 5], ";\n");
-    println!("")
+    show_triangle(10).into_iter().for_each(|c| print!("{c}"));
 }
