@@ -16,6 +16,7 @@ use generator_light::ext::from_iter;
 use generator_light::ext::once;
 use generator_light::ext::once_with;
 use generator_light::generator;
+use generator_light::suspend_;
 use generator_light::yield_;
 
 use generator_light::ext::GeneratorExt;
@@ -25,7 +26,8 @@ use std::convert::Infallible;
 fn list_printer<D: Display>(
     sep: impl Display,
 ) -> impl Generator<D, Yield = (), Return = Infallible> {
-    generator(async move |mut yielder: Yielder<_, _>, mut item: D| {
+    generator(async move |mut yielder: Yielder<_, _>| {
+        let mut item = suspend_!(yielder);
         print!("{item}");
         loop {
             item = yield_!(yielder, ());
