@@ -25,24 +25,13 @@ fn std_iter_func(n: usize) -> impl IntoIterator<Item = usize> {
     })
 }
 
-fn squares(n: usize) -> impl Generator<Yield = usize, Return = ()> {
+fn squares_gen(n: usize) -> impl Generator<Yield = usize, Return = ()> {
     generator(async move |mut yilder: Yielder<_, _>| {
         for idx in 1..=n {
             let idx = black_box(idx);
             generator_light::yield_!(yilder, idx * idx)
         }
     })
-}
-
-fn squares_genawaiter(n: usize) {
-    use genawaiter::yield_;
-    genawaiter::stack::let_gen!(squares, {
-        for idx in 1..=n {
-            let idx = black_box(idx);
-            yield_!(idx * idx);
-        }
-    });
-    consume_iter(squares.into_iter());
 }
 
 fn squares_compose(n: usize) -> impl Generator<Yield = usize, Return = ()> {
@@ -54,6 +43,17 @@ fn squares_compose(n: usize) -> impl Generator<Yield = usize, Return = ()> {
                 .unwrap_or(GeneratorState::Complete(()))
         }))
         .map_complete(drop)
+}
+
+fn squares_genawaiter(n: usize) {
+    use genawaiter::yield_;
+    genawaiter::stack::let_gen!(squares, {
+        for idx in 1..=n {
+            let idx = black_box(idx);
+            yield_!(idx * idx);
+        }
+    });
+    consume_iter(squares.into_iter());
 }
 
 fn consume_iter<I: Iterator<Item = usize>>(iter: I) {
@@ -73,24 +73,21 @@ fn bench_generators(c: &mut Criterion) {
                 consume_iter(it.into_iter());
             })
         });
-
         group.bench_with_input(BenchmarkId::new("squares_gen", n), &n, |b, &n| {
             b.iter(|| {
-                let g = pin!(squares(n));
+                let g = pin!(squares_gen(n));
                 consume_iter(g.into_iter());
             })
         });
-
-        group.bench_with_input(BenchmarkId::new("squares_genawaiter", n), &n, |b, &n| {
-            b.iter(|| {
-                squares_genawaiter(n);
-            })
-        });
-
         group.bench_with_input(BenchmarkId::new("squares_compose", n), &n, |b, &n| {
             b.iter(|| {
                 let g = pin!(squares_compose(n));
                 consume_iter(g.into_iter());
+            })
+        });
+        group.bench_with_input(BenchmarkId::new("squares_genawaiter", n), &n, |b, &n| {
+            b.iter(|| {
+                squares_genawaiter(n);
             })
         });
     }

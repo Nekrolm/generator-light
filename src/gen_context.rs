@@ -12,11 +12,6 @@ enum YieldState<Y, R> {
 
 pub(crate) struct GeneratorContext<Y, R>(Cell<YieldState<Y, R>>);
 
-// pub struct Yielder<'a, Y, R> {
-//     state: NonNull<Cell<YieldState<Y, R>>>,
-//     brand: PhantomData<&'a mut ()>,
-// }
-
 pub struct Yielder<'a, Y, R> {
     state: PhantomData<(Y, R)>,
     brand: PhantomData<&'a mut ()>,

@@ -20,7 +20,7 @@ where
     type Yield = Y;
     type Return = Output;
 
-    #[inline]
+    #[inline(always)]
     fn resume(self: Pin<&mut Self>, value: R) -> GeneratorState<Self::Yield, Self::Return> {
         let f = unsafe { self.map_unchecked_mut(|this| &mut this.f) };
         let state = GeneratorContext::<Y, _>::new_resumed(value);

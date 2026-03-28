@@ -25,5 +25,7 @@ harness = false
 default = ["std"]
 std = []
 
-# [profile.bench]
+[profile.bench]
+lto = true
+codegen-units = 1
 # debug = true
