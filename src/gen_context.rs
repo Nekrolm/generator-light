@@ -59,11 +59,14 @@ impl<'a, Y, R> Future for YieldFuture<'a, Y, R> {
         // Safety:
         //    YieldFuture may be created only by Yielder. Yeilder exists only during generator
         //    execution. This means we are inside generator and cx has yilder_waker data inside
-        match unsafe {
-            get_context(cx)
-                .as_ref()
-                .replace(YieldState::Yield(self.get_unchecked_mut().state.take()))
-        } {
+        let ctx = unsafe { get_context::<Y, R>(cx).as_ref() };
+        if let Some(state) = unsafe { self.get_unchecked_mut() }.state.take() {
+            // We have something to yield. Unconditionally return control to the context
+            ctx.set(YieldState::Yield(Some(state)));
+            return Poll::Pending;
+        }
+
+        match ctx.replace(YieldState::Yield(None)) {
             YieldState::Resume(r) => Poll::Ready(r),
             _ => Poll::Pending,
         }

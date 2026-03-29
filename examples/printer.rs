@@ -63,6 +63,15 @@ fn adjacent_difference() -> impl Generator<i32, Yield = i32, Return = Infallible
 }
 
 fn main() {
+    Box::pin(
+        from_iter([1, 2, 3, 4, 5])
+            .compose(list_printer(";\n"))
+            .map_complete(drop),
+    )
+    .into_iter()
+    .for_each(drop);
+    println!("\nend list");
+
     from_iter((1..15).map(|x| x * x))
         .compose(adjacent_difference())
         .map_complete(drop)
